@@ -1,0 +1,34 @@
+---
+name: "Release"
+
+on:
+ push:
+  branches:
+   - "master"
+
+jobs:
+ DockerHub:
+  name: "Release - DockerHub"
+  runs-on: "ubuntu-latest"
+
+  steps:
+   - name: Set up QEMU
+     uses: docker/setup-qemu-action@v2
+
+   - name: Set up Docker Buildx
+     uses: docker/setup-buildx-action@v2
+
+   - name: Login to DockerHub
+     uses: docker/login-action@v1
+     with:
+      username: ${{ secrets.DOCKER_USERNAME }}
+      password: ${{ secrets.DOCKER_PASSWORD }}
+
+   - name: Build & Publish release on DockerHub
+     uses: docker/build-push-action@v2
+     with:
+      push: true
+      tags: inrix/plex-exporter:latest
+      cache-from: type=gha
+      cache-to: type=gha,mode=max
+      platforms: linux/amd64,linux/arm64
