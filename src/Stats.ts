@@ -70,6 +70,7 @@ export const getStats = async (token: string, url: string) => {
 		searchParams: {
 			timespan: 6,
 			"X-Plex-Token": token,
+			"X-Plex-Device-Name": "PrometheusExporter",
 		},
 	});
 	const { MediaContainer }: JsonResponse = await parseStringPromise(result);
