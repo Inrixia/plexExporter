@@ -1,7 +1,6 @@
 import { Gauge, register } from "prom-client";
 import { createServer } from "http";
-
-throw new Error("This has broken changes... DM me @inrixia");
+import { getStats } from "./Stats.js";
 
 if (process.env.PLEX_TOKEN === undefined) throw new Error("PLEX_TOKEN env var net set!");
 if (process.env.PLEX_SERVER === undefined) throw new Error("PLEX_SERVER env var net set! Example: https://plex.ip.address:port");
@@ -17,12 +16,11 @@ new Gauge({
 	labelNames: ["accountName", "accountId", "deviceId", "deviceName", "devicePlatform", "clientIdentifier", "lan"] as const,
 	async collect() {
 		this.reset();
-		// const stats = await getStats(plexToken, plexServer).catch((err) => console.log(`An error occurred: ${err}`));
-		// if (stats !== undefined) {
-		// 	stats.forEach((stat) => {
-		// 		this.set(stat.labels, stat.bytes);
-		// 	});
-		// }
+		const samples = await getStats(plexToken, plexServer).catch((err) => console.log(`An error occurred: ${err}`));
+		if (samples !== undefined)
+			for (const sample of samples) {
+				this.set(...sample.make());
+			}
 	},
 });
 

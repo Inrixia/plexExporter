@@ -42,7 +42,7 @@ type DeviceCacheEntry = {
 	clientIdentifier: string;
 };
 
-type Stat = {
+type Stat = [
 	labels: {
 		// Account info
 		accountName: string;
@@ -54,9 +54,9 @@ type Stat = {
 		clientIdentifier: string;
 		// Data info
 		lan: string;
-	};
-	bytes: number;
-};
+	},
+	bytes: number
+];
 
 // Global caches
 const lastSentStatTimetamps: { [uid: string]: number } = {};
@@ -99,8 +99,8 @@ export const getStats = async (token: string, url: string) => {
 		return MediaContainer.StatisticsBandwidth.map((stat) => ({
 			...stat,
 			uid: `${stat.deviceID}-${stat.accountID}`,
-			make: (bytes: number): Stat => ({
-				labels: {
+			make: (bytes?: number): Stat => [
+				{
 					// Account info
 					accountName: accountCache[stat.accountID],
 					accountId: stat.accountID.toString(),
@@ -112,38 +112,24 @@ export const getStats = async (token: string, url: string) => {
 					// Net info
 					lan: stat.lan.toString(),
 				},
-				bytes,
-			}),
+				bytes ?? stat.bytes,
+			],
 		}));
 	};
 
-	const [latestSamples, totalSamples] = await Promise.all([getMediaContainer(6), getMediaContainer(1)]);
+	const latestSamples = await getMediaContainer(6);
 
-	// TODO:
-	// Filter latest samples to only the latest at values over uid
-	// Sum totalsamples over uid
-	// Return a counter/gauge
+	const maxAts: Record<string, number> = {};
+	for (const sample of latestSamples) {
+		maxAts[sample.uid] ??= sample.at;
+		if (sample.at > maxAts[sample.uid]) maxAts[sample.uid] = sample.at;
+	}
 
-	// latestSamples.reduce(latestSamples);
-
-	// const latestStats = latestSamples
-	// 	.filter(({ uid, at }) => at === latestStatTimestamps[uid] && at > (lastSentStatTimetamps[uid] ?? 0))
-	// 	.map(({ $: { deviceID, accountID, lan, bytes, at } }) => {
-	// 		lastSentStatTimetamps[deviceID] = at;
-	// 		return {
-	// 			labels: {
-	// 				// Account info
-	// 				accountName: accountCache[accountID],
-	// 				accountId: accountID,
-	// 				// Device info
-	// 				deviceId: deviceID,
-	// 				deviceName: deviceCache[deviceID].name,
-	// 				devicePlatform: deviceCache[deviceID].platform,
-	// 				clientIdentifier: deviceCache[deviceID].clientIdentifier,
-	// 				// Data info
-	// 				lan,
-	// 			},
-	// 			bytes: Number.parseInt(bytes),
-	// 		};
-	// 	});
+	return latestSamples.filter((sample) => {
+		if (maxAts[sample.uid] === sample.at && lastSentStatTimetamps[sample.uid] !== sample.at) {
+			lastSentStatTimetamps[sample.uid] = sample.at;
+			return true;
+		}
+		return false;
+	});
 };
