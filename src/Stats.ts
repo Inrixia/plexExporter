@@ -119,14 +119,28 @@ export const getStats = async (token: string, url: string) => {
 
 	const latestSamples = await getMediaContainer(6);
 
+	const isNewSample = ({ uid, at }: { uid: string; at: number }) => {
+		if (lastSentStatTimetamps[uid] === undefined) {
+			lastSentStatTimetamps[uid] = at;
+			return true;
+		}
+		if (at > lastSentStatTimetamps[uid]) return true;
+		return false;
+	};
+
 	const maxAts: Record<string, number> = {};
+	const updateMaxSample = ({ uid, at }: { uid: string; at: number }) => {
+		maxAts[uid] ??= at;
+		maxAts[uid] = at > maxAts[uid] ? at : maxAts[uid];
+	};
+
 	for (const sample of latestSamples) {
-		maxAts[sample.uid] ??= sample.at;
-		if (sample.at > maxAts[sample.uid]) maxAts[sample.uid] = sample.at;
+		if (isNewSample(sample)) updateMaxSample(sample);
 	}
 
+	// Filter only the newest unseen samples
 	return latestSamples.filter((sample) => {
-		if (maxAts[sample.uid] === sample.at && lastSentStatTimetamps[sample.uid] !== sample.at) {
+		if (maxAts[sample.uid] === sample.at) {
 			lastSentStatTimetamps[sample.uid] = sample.at;
 			return true;
 		}
