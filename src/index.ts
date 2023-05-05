@@ -1,6 +1,6 @@
 import { Gauge, register } from "prom-client";
 import { createServer } from "http";
-import { getStats } from "./Stats.js";
+import { Sample, getStats } from "./Stats.js";
 
 if (process.env.PLEX_TOKEN === undefined) throw new Error("PLEX_TOKEN env var net set!");
 if (process.env.PLEX_SERVER === undefined) throw new Error("PLEX_SERVER env var net set! Example: https://plex.ip.address:port");
@@ -13,7 +13,7 @@ console.log(`Creating metric plex_device_bytes_used...`);
 new Gauge({
 	name: "plex_device_bytes_used",
 	help: "Bytes used by a plex device",
-	labelNames: ["accountName", "accountId", "deviceId", "deviceName", "devicePlatform", "clientIdentifier", "net"] as const,
+	labelNames: Sample.LabelNames,
 	async collect() {
 		this.reset();
 		const samples = await getStats(plexToken, plexServer).catch((err) => console.log(`An error occurred: ${err}`));

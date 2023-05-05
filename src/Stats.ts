@@ -35,19 +35,6 @@ type JsonResponse = {
 	};
 };
 
-type Labels = {
-	// Account info
-	accountName: string;
-	accountId: string;
-	// Device info
-	deviceId: string;
-	deviceName: string;
-	devicePlatform: string;
-	clientIdentifier: string;
-	// Data info
-	net: string;
-};
-
 type AccountCache = { [accountId: string]: Account["name"] };
 type DeviceCache = {
 	[deviceId: string]: {
@@ -57,34 +44,65 @@ type DeviceCache = {
 	};
 };
 
-class Sample {
-	public readonly labels: Labels;
+export class Sample {
+	public static readonly LabelNames = [
+		"accountName",
+		"accountId",
+		"originalAccountName",
+		"originalAccountId",
+		"deviceId",
+		"deviceName",
+		"devicePlatform",
+		"clientIdentifier",
+		"net",
+	] as const;
+	private accountCache: AccountCache;
+	private deviceCache: DeviceCache;
 
 	public readonly lan: boolean;
 	public readonly at: number;
-	public readonly accountId: number;
 	public readonly deviceId: number;
 	public bytes: number;
+
+	private originalAccountId?: number;
+	private _accountId: number;
 
 	constructor(stat: StatisticsBandwidth, accountCache: AccountCache, deviceCache: DeviceCache) {
 		this.lan = stat.lan;
 		this.at = stat.at;
-		this.accountId = stat.accountID;
+		this._accountId = stat.accountID;
 		this.deviceId = stat.deviceID;
 		this.bytes = stat.bytes;
 
-		this.labels = {
+		this.accountCache = accountCache;
+		this.deviceCache = deviceCache;
+	}
+
+	get accountId(): number {
+		return this._accountId;
+	}
+	set accountId(accountId: number) {
+		this.originalAccountId = this._accountId;
+		this._accountId = accountId;
+	}
+
+	get labels() {
+		const labels: Partial<Record<typeof Sample["LabelNames"][number], string>> = {
 			// Account info
-			accountName: accountCache[stat.accountID],
-			accountId: stat.accountID.toString(),
+			accountName: this.accountCache[this.accountId],
+			accountId: this.accountId.toString(),
 			// Device info
-			deviceId: stat.deviceID.toString(),
-			deviceName: deviceCache[stat.deviceID].name,
-			devicePlatform: deviceCache[stat.deviceID].platform,
-			clientIdentifier: deviceCache[stat.deviceID].clientIdentifier,
+			deviceId: this.deviceId.toString(),
+			deviceName: this.deviceCache[this.deviceId].name,
+			devicePlatform: this.deviceCache[this.deviceId].platform,
+			clientIdentifier: this.deviceCache[this.deviceId].clientIdentifier,
 			// Net info
-			net: stat.lan ? "lan" : "wan",
+			net: this.lan ? "lan" : "wan",
 		};
+		// Original info
+		if (this.originalAccountId !== undefined) labels.originalAccountName = this.accountCache[this.originalAccountId];
+		if (this.originalAccountId !== undefined) labels.originalAccountId = this.originalAccountId.toString();
+		return labels;
 	}
 
 	get uid() {
@@ -146,22 +164,20 @@ export const getStats = async (token: string, url: string) => {
 
 		const isOwnerWan = (sample: Sample) => !sample.lan && sample.accountId === 1;
 
-		const filteredSamples: Sample[] = [];
-		for (let i = 0; i < samples.length; i++) {
-			const ownerWanSample = samples[i];
+		return samples.map((ownerWanSample) => {
 			// Only work on the owner user
 			if (isOwnerWan(ownerWanSample)) {
 				const remoteUserSample = remoteUserSamples[`${ownerWanSample.deviceId}-${ownerWanSample.at}`];
-				if (remoteUserSample) {
-					remoteUserSample.bytes = ownerWanSample.bytes;
-					// Dont include bad ownerWanSamples in filteredSamples
-					continue;
+				// If there is a remote wan user using the exact same device as the owner on wan,
+				// And the remote users bytes are below streaming traffic while the owners is above
+				// Assume that plex has incorrectly identified the device and fix the mapping
+				if (remoteUserSample && remoteUserSample.bytes < 27212970 && ownerWanSample.bytes > 27212970) {
+					// Change the accountId of the sample to the remote user's id
+					ownerWanSample.accountId = remoteUserSample.accountId;
 				}
 			}
-			filteredSamples.push(ownerWanSample);
-		}
-
-		return filteredSamples;
+			return ownerWanSample;
+		});
 	};
 
 	const latestSamples = fixBadAccounts(await getMediaContainer(6));
