@@ -53,7 +53,7 @@ type Stat = [
 		devicePlatform: string;
 		clientIdentifier: string;
 		// Data info
-		lan: string;
+		net: string;
 	},
 	bytes: number
 ];
@@ -110,7 +110,7 @@ export const getStats = async (token: string, url: string) => {
 					devicePlatform: deviceCache[stat.deviceID].platform,
 					clientIdentifier: deviceCache[stat.deviceID].clientIdentifier,
 					// Net info
-					lan: stat.lan.toString(),
+					net: stat.lan ? "lan" : "wan",
 				},
 				bytes ?? stat.bytes,
 			],
