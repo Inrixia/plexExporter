@@ -19,7 +19,7 @@ new Gauge({
 		const samples = await getStats(plexToken, plexServer).catch((err) => console.log(`An error occurred: ${err}`));
 		if (samples !== undefined)
 			for (const sample of samples) {
-				this.set(...sample.make());
+				this.set(sample.labels, sample.bytes);
 			}
 	},
 });
