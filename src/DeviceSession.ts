@@ -72,20 +72,29 @@ export class DeviceSession {
 		return this.sessionCache.getSessions(this.lan, this.accountId, this.clientIdentifier);
 	}
 
-	public get totalSessionBandwidth() {
+	public get totalSessionBitrate() {
 		return this.sessions.reduce((total, session) => {
-			if (session.Player.state !== "paused") return total + session.Session.bandwidth;
+			if (session.Player.state !== "paused") return total + DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1);
 			return total;
 		}, 0);
 	}
 
-	public static AllocateBandwidth(state: string, sessionBandwidth: number, totalSessionBandwidth: number, bytes: number) {
-		return state !== "paused" ? (sessionBandwidth / totalSessionBandwidth) * bytes : 0;
+	public static SessionBitrate(session: SmolSession) {
+		return session.Media.reduce((totalBitrate, media) => totalBitrate + media.bitrate, 0);
 	}
 
-	public allocateBytes(bytes: number, totalBytes: number) {
+	public static AllocateBandwidth(state: string, sessionBitrate: number, totalSessionBitrate: number, bytes: number) {
+		return state !== "paused" ? (sessionBitrate / totalSessionBitrate) * bytes : 0;
+	}
+
+	public allocateBytes(bytes: number, totalBitrate: number) {
 		for (const session of this.sessions) {
-			this.bytes += DeviceSession.AllocateBandwidth(session.Player.state, session.Session.bandwidth, totalBytes, bytes);
+			this.bytes += DeviceSession.AllocateBandwidth(
+				session.Player.state,
+				DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1),
+				totalBitrate,
+				bytes
+			);
 		}
 	}
 
@@ -98,9 +107,14 @@ export class DeviceSession {
 
 		if (sessions.length !== 0) {
 			// Distribute bandwidth across all sessions
-			const totalSessionBandwidth = this.totalSessionBandwidth;
+			const totalSessionBandwidth = this.totalSessionBitrate;
 			for (const session of sessions) {
-				const estimatedBytes = DeviceSession.AllocateBandwidth(session.Player.state, session.Session.bandwidth, totalSessionBandwidth, this.bytes);
+				const estimatedBytes = DeviceSession.AllocateBandwidth(
+					session.Player.state,
+					DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1),
+					totalSessionBandwidth,
+					this.bytes
+				);
 				samples.push({ labels: this.getLabels(session), bytes: estimatedBytes });
 			}
 		} else samples.push({ labels: this.getLabels(), bytes: this.bytes });
@@ -130,7 +144,7 @@ export class DeviceSession {
 
 			labels.mediaTitle = mediaTitle;
 			labels.address = session.Player.address;
-			labels.state = session.Player.state === "buffering" ? "playing" : session.Player.state;
+			labels.state = session.Player.state;
 		}
 
 		return labels;

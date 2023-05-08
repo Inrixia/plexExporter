@@ -99,8 +99,8 @@ export class PlexMeta {
 			// Owners wan bytes are above streaming traffic
 			const ownerSampleBytes = owSample.bytes;
 			if (ownerSampleBytes > 100000) {
-				const owTotalSessionBandwidth = owSample.totalSessionBandwidth;
-				let deviceTotalSessionBandwidth = owTotalSessionBandwidth;
+				const owTotalSessionBitrate = owSample.totalSessionBitrate;
+				let deviceTotalSessionBitrate = owTotalSessionBitrate;
 				// Remote user bytes is below streaming traffic, has sessions and is also using the same client
 				const userSamples = samples.filter(
 					(sample) => sample.clientIdentifier === owSample.clientIdentifier && sample.bytes < 100000 && sample.sessions.length > 0
@@ -108,16 +108,16 @@ export class PlexMeta {
 
 				// Calculate the total session bandwidth for this device
 				for (const userSample of userSamples) {
-					deviceTotalSessionBandwidth += userSample.totalSessionBandwidth;
+					deviceTotalSessionBitrate += userSample.totalSessionBitrate;
 				}
 				// Dish out the owners bytes to each user based on their sessions
 				for (const userSample of userSamples) {
 					if (userSample.at < owSample.at) userSample.at = owSample.at;
-					userSample.allocateBytes(ownerSampleBytes, deviceTotalSessionBandwidth);
+					userSample.allocateBytes(ownerSampleBytes, deviceTotalSessionBitrate);
 				}
 				owSample.bytes = 0;
 				// Dish out the owners share if they also have a session
-				if (owTotalSessionBandwidth > 0) owSample.allocateBytes(ownerSampleBytes, deviceTotalSessionBandwidth);
+				if (owTotalSessionBitrate > 0) owSample.allocateBytes(ownerSampleBytes, deviceTotalSessionBitrate);
 			}
 		}
 		//==

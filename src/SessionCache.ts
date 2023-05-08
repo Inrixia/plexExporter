@@ -1,4 +1,4 @@
-import { Player, Sessions, User, Session } from "./Sessions.js";
+import { Player, Sessions, User, Session, Media } from "./Sessions.js";
 
 interface BaseSession {
 	title: string;
@@ -6,6 +6,7 @@ interface BaseSession {
 	User: User;
 	Player: Player;
 	Session: Session;
+	Media: Media[];
 }
 interface SessionEpisode extends BaseSession {
 	type: "episode";
@@ -35,6 +36,7 @@ export class SessionCache {
 					User: session.User,
 					Player: session.Player,
 					Session: session.Session,
+					Media: session.Media,
 				};
 			}
 			if (session.type === "episode") {
@@ -49,6 +51,7 @@ export class SessionCache {
 					User: session.User,
 					Player: session.Player,
 					Session: session.Session,
+					Media: session.Media,
 				};
 			}
 			if (newSession === undefined) continue;
