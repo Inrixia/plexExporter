@@ -100,6 +100,7 @@ export class PlexMeta {
 			const ownerSampleBytes = owSample.bytes;
 			if (ownerSampleBytes > 100000) {
 				const owTotalSessionBitrate = owSample.totalSessionBitrate;
+
 				let deviceTotalSessionBitrate = owTotalSessionBitrate;
 				// Remote user bytes is below streaming traffic, has sessions and is also using the same client
 				const userSamples = samples.filter(

@@ -1,6 +1,7 @@
 import type { StatisticsBandwidth } from "./Bandwidth.js";
 import type { AccountCache, DeviceCache } from "./Stats.js";
-import type { SessionCache, SmolSession } from "./SessionCache.js";
+import type { SessionCache } from "./SessionCache.js";
+import { Session } from "./Session.js";
 
 type Labels = Partial<Record<typeof DeviceSession["LabelNames"][number], string>>;
 
@@ -73,28 +74,12 @@ export class DeviceSession {
 	}
 
 	public get totalSessionBitrate() {
-		return this.sessions.reduce((total, session) => {
-			if (session.Player.state !== "paused") return total + DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1);
-			return total;
-		}, 0);
+		return this.sessions.reduce((total, session) => total + session.bitrate, 0);
 	}
 
-	public static SessionBitrate(session: SmolSession) {
-		return session.Media.reduce((totalBitrate, media) => totalBitrate + media.bitrate, 0);
-	}
-
-	public static AllocateBandwidth(state: string, sessionBitrate: number, totalSessionBitrate: number, bytes: number) {
-		return state !== "paused" ? (sessionBitrate / totalSessionBitrate) * bytes : 0;
-	}
-
-	public allocateBytes(bytes: number, totalBitrate: number) {
+	public allocateBytes(totalBitrate: number, bytes: number) {
 		for (const session of this.sessions) {
-			this.bytes += DeviceSession.AllocateBandwidth(
-				session.Player.state,
-				DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1),
-				totalBitrate,
-				bytes
-			);
+			this.bytes += session.getAllocation(totalBitrate, bytes);
 		}
 	}
 
@@ -109,12 +94,7 @@ export class DeviceSession {
 			// Distribute bandwidth across all sessions
 			const totalSessionBandwidth = this.totalSessionBitrate;
 			for (const session of sessions) {
-				const estimatedBytes = DeviceSession.AllocateBandwidth(
-					session.Player.state,
-					DeviceSession.SessionBitrate(session) * (session.Player.state === "buffering" ? 4 : 1),
-					totalSessionBandwidth,
-					this.bytes
-				);
+				const estimatedBytes = session.getAllocation(totalSessionBandwidth, this.bytes);
 				samples.push({ labels: this.getLabels(session), bytes: estimatedBytes });
 			}
 		} else samples.push({ labels: this.getLabels(), bytes: this.bytes });
@@ -122,9 +102,9 @@ export class DeviceSession {
 		return samples;
 	}
 
-	private getLabels(session?: SmolSession): Labels {
-		const accountName = session?.User.title ?? this.accountCache[this.accountId];
-		const accountId = session?.User.id ?? this.accountId.toString();
+	private getLabels(session?: Session): Labels {
+		const accountName = session?.userTitle ?? this.accountCache[this.accountId];
+		const accountId = session?.userId ?? this.accountId.toString();
 
 		const labels: Labels = {
 			// Account info
@@ -140,11 +120,11 @@ export class DeviceSession {
 
 		if (session !== undefined) {
 			let mediaTitle = `${session.title} (${session.year})`;
-			if (session.type === "episode") mediaTitle = `${session.seriesTitle} - S${session.seasonNo}E${session.episodeNo} - ${session.title}`;
+			if (session.isShow()) mediaTitle = `${session.seriesTitle} - S${session.seasonNo}E${session.episodeNo} - ${session.title}`;
 
 			labels.mediaTitle = mediaTitle;
-			labels.address = session.Player.address;
-			labels.state = session.Player.state;
+			labels.address = session.address;
+			labels.state = session.state;
 		}
 
 		return labels;
