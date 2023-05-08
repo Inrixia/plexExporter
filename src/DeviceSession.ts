@@ -22,7 +22,7 @@ export class DeviceSession {
 	private static LatestSamples: Record<string, number> = {};
 
 	public readonly lan: boolean;
-	public readonly at: number;
+	public at: number;
 	public bytes: number;
 
 	public readonly deviceId: number;

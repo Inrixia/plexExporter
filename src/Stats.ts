@@ -112,6 +112,7 @@ export class PlexMeta {
 				}
 				// Dish out the owners bytes to each user based on their sessions
 				for (const userSample of userSamples) {
+					if (userSample.at < owSample.at) userSample.at = owSample.at;
 					userSample.allocateBytes(ownerSampleBytes, deviceTotalSessionBandwidth);
 				}
 				owSample.bytes = 0;
