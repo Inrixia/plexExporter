@@ -130,7 +130,7 @@ export class DeviceSession {
 
 			labels.mediaTitle = mediaTitle;
 			labels.address = session.Player.address;
-			labels.state = session.Player.state;
+			labels.state = session.Player.state === "buffering" ? "playing" : session.Player.state;
 		}
 
 		return labels;
