@@ -1,42 +1,11 @@
 import got from "got";
+import { Account, Bandwidth } from "./Bandwidth.js";
+import { Sessions } from "./Sessions.js";
+import { DeviceSession as DeviceSample } from "./DeviceSession.js";
+import { SessionCache } from "./SessionCache.js";
 
-type Account = {
-	id: number;
-	key: `/accounts/${number}`;
-	name: string;
-	defaultAudioLanguage: string;
-	autoSelectAudio: boolean;
-	defaultSubtitleLanguage: string;
-	subtitleMode: number;
-	thumb: `https://plex.tv/users/${number}/avatar?c=${number}`;
-};
-type Device = {
-	id: number;
-	name: string;
-	platform: string;
-	clientIdentifier: string;
-	createdAt: number;
-};
-type StatisticsBandwidth = {
-	accountID: number;
-	deviceID: number;
-	timespan: number;
-	at: number;
-	lan: boolean;
-	bytes: number;
-};
-
-type JsonResponse = {
-	MediaContainer: {
-		size: number;
-		Device: Device[];
-		Account: Account[];
-		StatisticsBandwidth: StatisticsBandwidth[];
-	};
-};
-
-type AccountCache = { [accountId: string]: Account["name"] };
-type DeviceCache = {
+export type AccountCache = { [accountId: string]: Account["name"] };
+export type DeviceCache = {
 	[deviceId: string]: {
 		name: string;
 		platform: string;
@@ -44,86 +13,27 @@ type DeviceCache = {
 	};
 };
 
-export class Sample {
-	public static readonly LabelNames = [
-		"accountName",
-		"accountId",
-		"originalAccountName",
-		"originalAccountId",
-		"deviceId",
-		"deviceName",
-		"devicePlatform",
-		"clientIdentifier",
-		"net",
-	] as const;
-	private accountCache: AccountCache;
-	private deviceCache: DeviceCache;
+export class PlexMeta {
+	private url: string;
+	private token: string;
+	private timespan: 1 | 2 | 3 | 4 | 6;
 
-	public readonly lan: boolean;
-	public readonly at: number;
-	public readonly deviceId: number;
-	public bytes: number;
-
-	private originalAccountId?: number;
-	private _accountId: number;
-
-	constructor(stat: StatisticsBandwidth, accountCache: AccountCache, deviceCache: DeviceCache) {
-		this.lan = stat.lan;
-		this.at = stat.at;
-		this._accountId = stat.accountID;
-		this.deviceId = stat.deviceID;
-		this.bytes = stat.bytes;
-
-		this.accountCache = accountCache;
-		this.deviceCache = deviceCache;
+	constructor({ url, token, timespan }: { url: string; token: string; timespan?: 1 | 2 | 3 | 4 | 6 }) {
+		this.url = url;
+		this.token = token;
+		this.timespan = timespan ?? 6;
 	}
 
-	get accountId(): number {
-		return this._accountId;
-	}
-	set accountId(accountId: number) {
-		this.originalAccountId = this._accountId;
-		this._accountId = accountId;
-	}
-
-	get labels() {
-		const labels: Partial<Record<typeof Sample["LabelNames"][number], string>> = {
-			// Account info
-			accountName: this.accountCache[this.accountId],
-			accountId: this.accountId.toString(),
-			// Device info
-			deviceId: this.deviceId.toString(),
-			deviceName: this.deviceCache[this.deviceId].name,
-			devicePlatform: this.deviceCache[this.deviceId].platform,
-			clientIdentifier: this.deviceCache[this.deviceId].clientIdentifier,
-			// Net info
-			net: this.lan ? "lan" : "wan",
-		};
-		// Original info
-		if (this.originalAccountId !== undefined) labels.originalAccountName = this.accountCache[this.originalAccountId];
-		if (this.originalAccountId !== undefined) labels.originalAccountId = this.originalAccountId.toString();
-		return labels;
-	}
-
-	get uid() {
-		return `${this.accountId}:${this.deviceId}`;
-	}
-}
-
-// Global caches
-const lastSentStatTimetamps: { [uid: string]: number } = {};
-
-export const getStats = async (token: string, url: string) => {
-	const getMediaContainer = async (timespan: number) => {
-		const { MediaContainer } = await got.get<JsonResponse>({
+	private async getBandwidth() {
+		const { MediaContainer } = await got.get<Bandwidth>({
 			responseType: "json",
 			resolveBodyOnly: true,
 			https: { rejectUnauthorized: false },
 			method: "GET",
-			url: `${url}/statistics/bandwidth`,
+			url: `${this.url}/statistics/bandwidth`,
 			searchParams: {
-				timespan,
-				"X-Plex-Token": token,
+				timespan: this.timespan,
+				"X-Plex-Token": this.token,
 				"X-Plex-Device-Name": "PrometheusExporter",
 				"X-Plex-Device": "Node",
 				"X-Plex-Platform": "Node",
@@ -134,79 +44,79 @@ export const getStats = async (token: string, url: string) => {
 				Accept: "application/json",
 			},
 		});
+		return MediaContainer;
+	}
+	private async getSessions() {
+		const { MediaContainer } = await got.get<Sessions>({
+			responseType: "json",
+			resolveBodyOnly: true,
+			https: { rejectUnauthorized: false },
+			method: "GET",
+			url: `${this.url}/status/sessions`,
+			searchParams: {
+				"X-Plex-Token": this.token,
+				"X-Plex-Device-Name": "PrometheusExporter",
+				"X-Plex-Device": "Node",
+				"X-Plex-Platform": "Node",
+				// Fixed UUID4 for this app
+				"X-Plex-Client-Identifier": "9b60b49b-8158-4402-ad78-2f48eb4e7476",
+			},
+			headers: {
+				Accept: "application/json",
+			},
+		});
+		return MediaContainer;
+	}
 
-		const accountCache: AccountCache = {};
-		for (const account of MediaContainer.Account) {
-			accountCache[account.id] = account.name;
-		}
+	public async getSessionSamples() {
+		const [Bandwidth, Sessions] = await Promise.all([this.getBandwidth(), this.getSessions()]);
 
 		const deviceCache: DeviceCache = {};
-		for (const device of MediaContainer.Device) {
+		for (const device of Bandwidth.Device) {
 			deviceCache[device.id] = {
 				name: device.name,
 				platform: device.platform,
 				clientIdentifier: device.clientIdentifier,
 			};
 		}
-		return MediaContainer.StatisticsBandwidth.map((stat) => new Sample(stat, accountCache, deviceCache));
-	};
 
-	const fixBadAccounts = (samples: Sample[]) => {
-		const isRemoteUser = (sample: Sample) => !sample.lan && sample.accountId !== 1;
+		const accountCache: AccountCache = {};
+		for (const account of Bandwidth.Account) {
+			accountCache[account.id] = account.name;
+		}
 
+		const sessionCache: SessionCache = new SessionCache(Sessions);
+
+		const sessions = Bandwidth.StatisticsBandwidth.map((stat) => new DeviceSample(stat, accountCache, deviceCache, sessionCache)).filter(
+			(sample) => sample.isLatest
+		);
+
+		//== Fix bad accounts
 		// Build a hash of all remote user samples
-		const remoteUserSamples: Record<`${number}-${number}`, Sample> = {};
-		for (const remoteSample of samples) {
-			if (isRemoteUser(remoteSample)) {
-				remoteUserSamples[`${remoteSample.deviceId}-${remoteSample.at}`] = remoteSample;
+		const remoteUserSamples: Record<`${number}-${number}`, DeviceSample> = {};
+		for (const sample of sessions) {
+			// Sample is wan and not the owner
+			if (!sample.lan && !sample.isOwner) {
+				remoteUserSamples[`${sample.deviceId}-${sample.at}`] = sample;
 			}
 		}
 
-		const isOwnerWan = (sample: Sample) => !sample.lan && sample.accountId === 1;
-
-		return samples.map((ownerWanSample) => {
-			// Only work on the owner user
-			if (isOwnerWan(ownerWanSample)) {
-				const remoteUserSample = remoteUserSamples[`${ownerWanSample.deviceId}-${ownerWanSample.at}`];
+		for (const sample of sessions) {
+			// Sample is wan and the owner
+			if (!sample.lan && sample.isOwner) {
+				const remoteUserSample = remoteUserSamples[`${sample.deviceId}-${sample.at}`];
 				// If there is a remote wan user using the exact same device as the owner on wan,
 				// And the remote users bytes are below streaming traffic while the owners is above
 				// Assume that plex has incorrectly identified the device and fix the mapping
-				if (remoteUserSample && remoteUserSample.bytes < 27212970 && ownerWanSample.bytes > 27212970) {
+				if (remoteUserSample && remoteUserSample.bytes < 27212970 && sample.bytes > 27212970) {
 					// Change the accountId of the sample to the remote user's id
-					ownerWanSample.accountId = remoteUserSample.accountId;
+					sample.setAccountId(remoteUserSample.accountId);
 				}
 			}
-			return ownerWanSample;
-		});
-	};
-
-	const latestSamples = fixBadAccounts(await getMediaContainer(6));
-
-	const isNewSample = ({ uid, at }: Sample) => {
-		if (lastSentStatTimetamps[uid] === undefined) {
-			lastSentStatTimetamps[uid] = at;
-			return true;
 		}
-		if (at > lastSentStatTimetamps[uid]) return true;
-		return false;
-	};
+		//==
 
-	const maxAts: Record<string, number> = {};
-	const updateMaxSample = ({ uid, at }: Sample) => {
-		maxAts[uid] ??= at;
-		maxAts[uid] = at > maxAts[uid] ? at : maxAts[uid];
-	};
-
-	for (const sample of latestSamples) {
-		if (isNewSample(sample)) updateMaxSample(sample);
+		// Filter only new samples
+		return sessions.filter((sample) => sample.notSent);
 	}
-
-	// Filter only the newest unseen samples
-	return latestSamples.filter((sample) => {
-		if (maxAts[sample.uid] === sample.at) {
-			lastSentStatTimetamps[sample.uid] = sample.at;
-			return true;
-		}
-		return false;
-	});
-};
+}
