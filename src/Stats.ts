@@ -124,6 +124,6 @@ export class PlexMeta {
 		//==
 
 		// Filter only new samples
-		return samples.filter((sample) => sample.notSent);
+		return samples.filter((sample) => sample.notExpired);
 	}
 }

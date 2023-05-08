@@ -53,20 +53,22 @@ export class DeviceSession {
 		this.accountCache = accountCache;
 
 		DeviceSession.LatestSamples[this.uid] ??= this.at;
-		if (DeviceSession.LatestSamples[this.uid] < this.at) DeviceSession.LatestSamples[this.uid] = this.at;
+		if (this.at > DeviceSession.LatestSamples[this.uid]) DeviceSession.LatestSamples[this.uid] = this.at;
 	}
 
 	public get isOwner() {
 		return this.accountId === 1;
 	}
 
-	public get notSent() {
-		if (DeviceSession.LastSentSamples[this.uid] === undefined) return true;
-		if (DeviceSession.LastSentSamples[this.uid] >= this.at) return false;
-		return true;
-	}
 	public get isLatest() {
 		return DeviceSession.LatestSamples[this.uid] === this.at;
+	}
+
+	/**
+	 * This sample is not from more than 1 seconds in the past.
+	 */
+	public get notExpired() {
+		return this.at * 1000 > Date.now() - 1000;
 	}
 
 	public get sessions() {
@@ -84,8 +86,6 @@ export class DeviceSession {
 	}
 
 	public getSamples() {
-		DeviceSession.LastSentSamples[this.uid] = this.at;
-
 		const samples: { labels: Labels; bytes: number }[] = [];
 
 		const sessions = this.sessions;
