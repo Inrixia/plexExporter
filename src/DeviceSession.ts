@@ -8,8 +8,6 @@ export class DeviceSession {
 	public static readonly LabelNames = [
 		"accountName",
 		"accountId",
-		"originalAccountName",
-		"originalAccountId",
 		"deviceId",
 		"deviceName",
 		"devicePlatform",
@@ -57,17 +55,8 @@ export class DeviceSession {
 		if (DeviceSession.LatestSamples[this.uid] < this.at) DeviceSession.LatestSamples[this.uid] = this.at;
 	}
 
-	public get isRemoteUser() {
-		return !this.lan && this.accountId !== 1;
-	}
 	public get isOwner() {
 		return this.accountId === 1;
-	}
-
-	public setAccountId(accountId: number) {
-		this.originalAccountId = this.accountId;
-		// @ts-expect-error I wanna overwrite this.
-		this.accountId = accountId;
 	}
 
 	public get notSent() {
@@ -79,21 +68,39 @@ export class DeviceSession {
 		return DeviceSession.LatestSamples[this.uid] === this.at;
 	}
 
+	public get sessions() {
+		return this.sessionCache.getSessions(this.lan, this.accountId, this.clientIdentifier);
+	}
+
+	public get totalSessionBandwidth() {
+		return this.sessions.reduce((total, session) => {
+			if (session.Player.state !== "paused") return total + session.Session.bandwidth;
+			return total;
+		}, 0);
+	}
+
+	public static AllocateBandwidth(state: string, sessionBandwidth: number, totalSessionBandwidth: number, bytes: number) {
+		return state !== "paused" ? (sessionBandwidth / totalSessionBandwidth) * bytes : 0;
+	}
+
+	public allocateBytes(bytes: number, totalBytes: number) {
+		for (const session of this.sessions) {
+			this.bytes += DeviceSession.AllocateBandwidth(session.Player.state, session.Session.bandwidth, totalBytes, bytes);
+		}
+	}
+
 	public getSamples() {
 		DeviceSession.LastSentSamples[this.uid] = this.at;
 
 		const samples: { labels: Labels; bytes: number }[] = [];
 
-		const sessions = this.sessionCache.get(this.lan, this.accountId, this.clientIdentifier);
+		const sessions = this.sessions;
 
 		if (sessions.length !== 0) {
 			// Distribute bandwidth across all sessions
-			const totalSessionBandwidth = sessions.reduce((total, session) => {
-				if (session.Player.state !== "paused") return total + session.Session.bandwidth;
-				return total;
-			}, 0);
+			const totalSessionBandwidth = this.totalSessionBandwidth;
 			for (const session of sessions) {
-				const estimatedBytes = session.Player.state !== "paused" ? (session.Session.bandwidth / totalSessionBandwidth) * this.bytes : 0;
+				const estimatedBytes = DeviceSession.AllocateBandwidth(session.Player.state, session.Session.bandwidth, totalSessionBandwidth, this.bytes);
 				samples.push({ labels: this.getLabels(session), bytes: estimatedBytes });
 			}
 		} else samples.push({ labels: this.getLabels(), bytes: this.bytes });
@@ -124,11 +131,6 @@ export class DeviceSession {
 			labels.mediaTitle = mediaTitle;
 			labels.address = session.Player.address;
 			labels.state = session.Player.state;
-		}
-
-		if (this.originalAccountId !== undefined) {
-			labels.originalAccountId = this.originalAccountId.toString();
-			labels.originalAccountName = this.accountCache[this.originalAccountId];
 		}
 
 		return labels;

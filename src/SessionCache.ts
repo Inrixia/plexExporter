@@ -18,11 +18,12 @@ interface SessionMovie extends BaseSession {
 	type: "movie";
 }
 export type SmolSession = SessionEpisode | SessionMovie;
-type SessionSubCache = { [id: `${string}-${string}`]: SmolSession[] };
+type SessionSubCache = { [clientIdenfitier: string]: { [accountIdentifier: string]: SmolSession[] } };
+type Cache = { lan: SessionSubCache; wan: SessionSubCache };
 export class SessionCache {
-	private cache: { lan: SessionSubCache; wan: SessionSubCache } = { lan: {}, wan: {} };
+	private cache: Cache = { lan: {}, wan: {} };
 
-	constructor(sessions: Sessions["MediaContainer"]) {
+	public setCache(sessions: Sessions["MediaContainer"]) {
 		if (sessions.Metadata === undefined) return;
 		for (const session of sessions.Metadata) {
 			let newSession: SmolSession | undefined;
@@ -52,14 +53,21 @@ export class SessionCache {
 			}
 			if (newSession === undefined) continue;
 
-			const cacheId = `${session.User.id}-${session.Player.machineIdentifier}` as const;
-
-			this.cache[session.Session.location][cacheId] ??= [];
-			this.cache[session.Session.location][cacheId].push(newSession);
+			this.cache[session.Session.location][session.Player.machineIdentifier] ??= {};
+			this.cache[session.Session.location][session.Player.machineIdentifier][session.User.id] ??= [];
+			this.cache[session.Session.location][session.Player.machineIdentifier][session.User.id].push(newSession);
 		}
 	}
 
-	public get(lan: boolean, accountId: number, clinetIdentifier: string) {
-		return this.cache[lan ? "lan" : "wan"][`${accountId}-${clinetIdentifier}`] ?? [];
+	public clearCache() {
+		this.cache = { lan: {}, wan: {} };
+	}
+
+	public getSessions(lan: boolean, accountId: number, clientIdentifier: string) {
+		return this.cache[lan ? "lan" : "wan"][clientIdentifier]?.[accountId] ?? [];
+	}
+
+	public getDeviceSessions(lan: boolean, clientIdentifier: string) {
+		return Object.values(this.cache[lan ? "lan" : "wan"][clientIdentifier]).flatMap((s) => s) ?? [];
 	}
 }
