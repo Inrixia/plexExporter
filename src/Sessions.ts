@@ -80,12 +80,12 @@ export interface Country {
 export interface Media {
 	audioChannels: number;
 	audioCodec: string;
-	bitrate: number;
+	bitrate?: number;
 	container: string;
 	duration: number;
 	id: string;
 	selected?: boolean;
-	Part: Part[];
+	Part?: Part[];
 	audioProfile?: string;
 	videoProfile?: string;
 	height?: number;

@@ -64,14 +64,35 @@ export class Session<T extends SessionType = SessionType> {
 
 	public get bitrate(): number {
 		if (this.state === SessionState.Paused) return 0;
-		let bitrate = this.meta.Media.reduce((totalBitrate, media) => totalBitrate + media.bitrate, 0);
-		if (isNaN(bitrate) && !isNaN(this.meta.Session.bandwidth)) bitrate = this.meta.Session.bandwidth;
-		if (isNaN(bitrate)) bitrate = 10000;
-
+		let bitrate = 0;
+		for (const mediaItem of this.meta.Media) {
+			if (mediaItem.bitrate !== undefined) {
+				bitrate += mediaItem.bitrate;
+				continue;
+			}
+			if (mediaItem.Part !== undefined) {
+				for (const part of mediaItem.Part) {
+					if (part.bitrate !== undefined) {
+						bitrate += part.bitrate;
+						continue;
+					}
+					if (part.Stream !== undefined) {
+						for (const stream of part.Stream) {
+							if (stream.bitrate !== undefined) bitrate += stream.bitrate;
+						}
+					}
+				}
+			}
+		}
 		return bitrate;
 	}
 
 	public getAllocation(totalBitrate: number, bytes: number): number {
-		return this.state !== SessionState.Paused ? (this.bitrate / totalBitrate) * bytes : 0;
+		if (this.state === SessionState.Paused) return 0;
+		const estimatedBytes = (this.bitrate / totalBitrate) * bytes;
+		if (estimatedBytes > bytes) {
+			return bytes;
+		}
+		return estimatedBytes;
 	}
 }
