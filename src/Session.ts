@@ -68,7 +68,7 @@ export class Session<T extends SessionType = SessionType> {
 		if (isNaN(bitrate) && !isNaN(this.meta.Session.bandwidth)) bitrate = this.meta.Session.bandwidth;
 		if (isNaN(bitrate)) bitrate = 10000;
 
-		return bitrate * (this.state === SessionState.Buffering ? 4 : 1);
+		return bitrate;
 	}
 
 	public getAllocation(totalBitrate: number, bytes: number): number {
